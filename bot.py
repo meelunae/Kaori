@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import discord
+from dotenv import load_dotenv
 from discord.ext import commands, tasks
 import os
 import sys
@@ -25,9 +26,13 @@ ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
 }
 
-#discord.opus.load_opus('/opt/homebrew/Cellar/opus/1.3.1/lib/libopus.0.dylib')
+discord.opus.load_opus('/opt/homebrew/Cellar/opus/1.3.1/lib/libopus.0.dylib')
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+load_dotenv()
 
+BOT_TOKEN = os.getenv('AUTH_TOKEN')
+OWNER_UID = int(os.getenv('OWNER_ID'))
+BOT_UID = int(os.getenv('BOT_ID'))
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
         super().__init__(source, volume)
@@ -35,7 +40,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.duration = str(datetime.timedelta(seconds=data.get('duration'))).split(":", 1)[1]
         self.title = data.get('title')
         self.url = data.get('url')
-        print(self.duration)
 
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
@@ -55,8 +59,8 @@ def restart_bot():
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.queued_songs = [] 
-
+        self.queued_songs = []
+        
     @commands.command()
     async def join(self, ctx, *, channel: discord.VoiceChannel):
         if ctx.voice_client is not None:
@@ -124,6 +128,30 @@ class Music(commands.Cog):
                 await ctx.send(embed=remove_embed)
 
     @commands.command()
+    async def pause(self, ctx):
+        pause_embed = discord.Embed(color=0x874efe)
+        if ctx.voice_client and ctx.voice_client.is_playing():
+            ctx.voice_client.pause()
+            pause_embed.add_field(name="Playback paused", value=f"Type !resume to resume playback.", inline=False)
+        elif ctx.voice_client and ctx.voice_client.is_paused():
+            pause_embed.add_field(name="Error", value=f"I am not currently playing any music so I can't pause playback.", inline=False)
+        else:
+            pause_embed.add_field(name="Error", value=f"I am not in a voice channel right now", inline=False)
+        await ctx.send(embed=pause_embed)
+
+    @commands.command()
+    async def resume(self, ctx):
+        resume_embed = discord.Embed(color=0x874efe)
+        if ctx.voice_client and  ctx.voice_client.is_paused():
+            ctx.voice_client.resume()
+            resume_embed.add_field(name="Playback resumed", value=f"", inline=False)
+        elif ctx.voice_client and ctx.voice_client.is_playing():
+            resume_embed.add_field(name="Error", value=f"Music is already playing!", inline=False)
+        else:
+            resume_embed.add_field(name="Error", value=f"I am not in a voice channel right now", inline=False)
+        await ctx.send(embed=resume_embed)
+
+    @commands.command()
     async def skip(self, ctx):
         skip_embed = discord.Embed(color=0x874efe)
         if ctx.voice_client and ctx.voice_client.is_playing():
@@ -145,7 +173,7 @@ class Music(commands.Cog):
 
     @commands.command()
     async def restart(self, ctx):
-        if ctx.author.id == 174602493890789377:
+        if ctx.author.id == OWNER_UID:
             restart_embed = discord.Embed(color=0x874efe)
             restart_embed.add_field(name="Restarting", value="Restart requested by Ema. Be back soon! :)")
             await ctx.send(embed=restart_embed)
@@ -168,14 +196,14 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
                    description='Relatively simple music bot example', intents=intents)
 
-
 @tasks.loop(minutes=5)
 async def check_vc_members(guild_id, voice_channel_id):
     guild = bot.get_guild(guild_id)  
     voice_channel = guild.get_channel(voice_channel_id)
     if voice_channel:
-        voice_members = voice_channel.members
-        if len(voice_members) == 1:  # Exclude the bot itself
+        # Voice States returns a more reliable dictionary of connected members compared to Members cache.
+        voice_members = list(voice_channel.voice_states.keys()) 
+        if voice_members  == [BOT_UID]:  # We disconnect to save resources if the bot is the only connected user.
             for voice_client in bot.voice_clients:
                 await voice_client.disconnect()
     else:
@@ -188,4 +216,4 @@ async def on_ready():
 
     await bot.add_cog(Music(bot))
 
-bot.run('token')
+bot.run(BOT_TOKEN)
