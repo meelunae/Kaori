@@ -165,6 +165,18 @@ class Music(commands.Cog):
         await ctx.send(embed=skip_embed)
 
     @commands.command()
+    async def stop(self, ctx):
+        stop_embed = discord.Embed(color=0x874efe)
+        if ctx.voice_client:
+            self.queued_songs = [] # Emptying our queue for next instance
+            await ctx.voice_client.disconnect()
+            stop_embed.add_field(name="Stopped", value= "Music has been stopped and the queue is now empty!")
+        else: 
+            stop_embed.add_field(name="Error", value= "I am not in a voice channel right now.")
+        await ctx.send(embed=stop_embed)
+
+
+    @commands.command()
     async def flush(self, ctx):
         flush_embed = discord.Embed(color=0x874efe)
         songs_number = len(self.queued_songs)
@@ -195,7 +207,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
-                   description='Relatively simple music bot example', intents=intents)
+                   description='Music streaming bot based on YTDL for various platforms', intents=intents)
 
 @tasks.loop(minutes=5)
 async def check_vc_members(guild_id, voice_channel_id):
