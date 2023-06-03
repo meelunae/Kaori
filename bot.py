@@ -26,7 +26,8 @@ ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
 }
 
-discord.opus.load_opus('/opt/homebrew/Cellar/opus/1.3.1/lib/libopus.0.dylib')
+# This line is specific to my Mac environment as Discord.py will refuse to work without a valid opus library, and is unable to fetch it itself.
+#discord.opus.load_opus('/opt/homebrew/Cellar/opus/1.3.1/lib/libopus.0.dylib')
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 load_dotenv()
 
