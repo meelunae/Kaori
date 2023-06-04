@@ -107,11 +107,11 @@ class Music(commands.Cog):
     async def remove(self, ctx, *, number):
         remove_embed = discord.Embed(color=0x874efe)
         try:
-            index = int(number) - 1
-            if len(self.queued_songs) < index:
-                remove_embed.add_field(name="Error", value=f"The element you are trying to remove is not in the queue.", inline=False)
+            idx = int(number)
+            if len(self.queued_songs) < idx or idx < 1:
+                remove_embed.add_field(name="Error", value=f"There is no queue element for the selected index.", inline=False)
             else:
-                song = self.queued_songs.pop(index)
+                song = self.queued_songs.pop(idx-1)
                 remove_embed.add_field(name="Removed from Queue", value=f'{song["title"]} was removed from the queue.', inline=False)
         
         except ValueError:
