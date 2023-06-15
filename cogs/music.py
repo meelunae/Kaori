@@ -3,8 +3,6 @@ from config import cfg
 import datetime
 import discord
 from discord.ext import commands, tasks
-import os
-from utils import restart_bot
 import youtube_dl
 
 ytdl_format_options = {
@@ -175,14 +173,6 @@ class Music(commands.Cog):
         self.queued_songs = []
         flush_embed.add_field(name="Queue flushed", value=f"I have removed {songs_number} items from the queue.")
         await ctx.send(embed=flush_embed)
-
-    @commands.command()
-    async def restart(self, ctx):
-        if ctx.author.id == cfg.owner_id:
-            restart_embed = discord.Embed(color=0x874efe)
-            restart_embed.add_field(name="Restarting", value="Restart requested by Ema. Be back soon! :)")
-            await ctx.send(embed=restart_embed)
-            restart_bot()
 
     @play.before_invoke
     async def ensure_voice(self, ctx):
