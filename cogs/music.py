@@ -4,7 +4,7 @@ import datetime
 import discord
 from discord.ext import commands, tasks
 from utils import build_embed, import_opus
-import youtube_dl
+import yt_dlp
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -26,7 +26,7 @@ ffmpeg_options = {
 }
 
 import_opus()
-ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
