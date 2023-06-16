@@ -93,7 +93,7 @@ class Music(commands.Cog):
             embed_description = "The queue is currently empty."
         else:
             for i, song in enumerate(self.queued_songs, start=1):
-                embed_description += f'\n{i}. {song["title"]}\n'
+                embed_description += f'{i}. {song["title"]}\n'
         queue_embed = build_embed(self.bot, title="Queue", description=embed_description)
         await ctx.send(embed=queue_embed)
 
@@ -129,7 +129,7 @@ class Music(commands.Cog):
     async def resume(self, ctx):
         if ctx.voice_client and  ctx.voice_client.is_paused():
             ctx.voice_client.resume()
-            resume_embed = build_embed(self.bot, title="Playback resumed")
+            resume_embed = build_embed(self.bot, title="Playback resumed", description="")
         elif ctx.voice_client and ctx.voice_client.is_playing():
             resume_embed = build_embed(self.bot, title="Error", description="Music is already playing!", color=0xff0000)
         else:
