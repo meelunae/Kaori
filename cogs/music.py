@@ -3,6 +3,7 @@ from config import cfg
 import datetime
 import discord
 from discord.ext import commands, tasks
+from utils import build_embed, import_opus
 import youtube_dl
 
 ytdl_format_options = {
@@ -24,8 +25,7 @@ ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
 }
 
-# This line is specific to my Mac environment as Discord.py will refuse to work without a valid opus library, and is unable to fetch it itself.
-discord.opus.load_opus('/opt/homebrew/Cellar/opus/1.3.1/lib/libopus.0.dylib')
+import_opus()
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
 class YTDLSource(discord.PCMVolumeTransformer):
@@ -60,19 +60,17 @@ class Music(commands.Cog):
 
     @commands.command()
     async def play(self, ctx, *, url):
-        play_embed = discord.Embed(color=0x874efe)
         # We check if the task is already running to avoid starting it multiple times
-        if not (check_vc_members.is_running()):
+        if not check_vc_members.is_running():
             check_vc_members.start(self, ctx.guild.id, ctx.author.voice.channel.id)
         
         player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
         if ctx.voice_client.is_playing():
             self.queued_songs.append({'title': player.title, 'url': url})
-            play_embed.add_field(name="Added to Queue", value=f"\n{player.title}", inline=False)
+            play_embed = build_embed(self.bot, title="Added to Queue", description=f"\n{player.title}")
             play_embed.add_field(name=f"", value=f"In position #{len(self.queued_songs)}", inline=True)
         else:
-            play_embed=discord.Embed(color=0x874efe)
-            play_embed.add_field(name="Now Playing", value=f"\n{player.title}", inline=False)
+            play_embed = build_embed(self.bot, title="Now Playing", description=f"\n{player.title}")
             play_embed.add_field(name="Length", value=f"\n{player.duration}", inline=False)
             play_embed.add_field(name=f"", value=f"Requested by {ctx.author.mention}", inline=True)
             ctx.voice_client.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next_song(ctx), self.bot.loop).result())
@@ -82,8 +80,7 @@ class Music(commands.Cog):
         if len(self.queued_songs) > 0:
             song = self.queued_songs.pop(0)
             player = await YTDLSource.from_url(song['url'], loop=self.bot.loop, stream=True)
-            embed=discord.Embed(color=0x874efe)
-            embed.add_field(name="Now Playing", value=f"\n{player.title}", inline=False)
+            embed = build_embed(self.bot, title="Now Playing", description=f"\n{player.title}")
             embed.add_field(name="Length", value=f"\n{player.duration}", inline=False)
             embed.add_field(name=f"", value=f"Requested by {ctx.author.mention}", inline=True)
             ctx.voice_client.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next_song(ctx), self.bot.loop).result())
@@ -91,14 +88,13 @@ class Music(commands.Cog):
 
     @commands.command()
     async def queue(self, ctx):
-        queue_embed=discord.Embed(color=0x874efe)
+        embed_description = ""
         if len(self.queued_songs) == 0:
-            queue_embed.add_field(name="Queue", value=f"The queue is currently empty.", inline=False)
+            embed_description = "The queue is currently empty."
         else:
-            embed_value = ""
             for i, song in enumerate(self.queued_songs, start=1):
-                embed_value += f'\n{i}. {song["title"]}\n'
-            queue_embed.add_field(name="Queue", value=f"{embed_value}", inline=False)
+                embed_description += f'\n{i}. {song["title"]}\n'
+        queue_embed = build_embed(self.bot, title="Queue", description=embed_description)
         await ctx.send(embed=queue_embed)
 
     @commands.command()
@@ -107,81 +103,77 @@ class Music(commands.Cog):
         try:
             idx = int(number)
             if len(self.queued_songs) < idx or idx < 1:
-                remove_embed.add_field(name="Error", value=f"There is no queue element for the selected index.", inline=False)
+                remove_embed = build_embed(self.bot, title="Error", description="There is no queue element for the selected index.", color=0xff0000)
             else:
                 song = self.queued_songs.pop(idx-1)
-                remove_embed.add_field(name="Removed from Queue", value=f'{song["title"]} was removed from the queue.', inline=False)
+                remove_embed = build_embed(self.bot, title="Removed from Queue", description=f"{song['title']} was removed from the queue.")
         
         except ValueError:
-                remove_embed.add_field(name="Error", value=f"The value you provided is not a number.", inline=False)
+                remove_embed = build_embed(self.bot, title="Error", description="The value you provided is not a number.", color=0xff0000)
                 raise commands.CommandError("Tried to run remove from queue while passing an invalid input.")
         finally:
                 await ctx.send(embed=remove_embed)
 
     @commands.command()
     async def pause(self, ctx):
-        pause_embed = discord.Embed(color=0x874efe)
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
-            pause_embed.add_field(name="Playback paused", value=f"Type !resume to resume playback.", inline=False)
+            pause_embed = build_embed(self.bot, title="Playback paused", description="Type !resume to resume playback.")
         elif ctx.voice_client and ctx.voice_client.is_paused():
-            pause_embed.add_field(name="Error", value=f"I am not currently playing any music so I can't pause playback.", inline=False)
+            pause_embed = build_embed(self.bot, title="Error", description="I am not currently playing any music so I can't pause playback.", color=0xff0000)
         else:
-            pause_embed.add_field(name="Error", value=f"I am not in a voice channel right now", inline=False)
+            pause_embed = build_embed(self.bot, title="Error", description="I am not in a voice channel right now.", color=0xff0000)
         await ctx.send(embed=pause_embed)
 
     @commands.command()
     async def resume(self, ctx):
-        resume_embed = discord.Embed(color=0x874efe)
         if ctx.voice_client and  ctx.voice_client.is_paused():
             ctx.voice_client.resume()
-            resume_embed.add_field(name="Playback resumed", value=f"", inline=False)
+            resume_embed = build_embed(self.bot, title="Playback resumed")
         elif ctx.voice_client and ctx.voice_client.is_playing():
-            resume_embed.add_field(name="Error", value=f"Music is already playing!", inline=False)
+            resume_embed = build_embed(self.bot, title="Error", description="Music is already playing!", color=0xff0000)
         else:
-            resume_embed.add_field(name="Error", value=f"I am not in a voice channel right now", inline=False)
+            resume_embed = build_embed(self.bot, title="Error", description="I am not in a voice channel right now.", color=0xff0000)
         await ctx.send(embed=resume_embed)
 
     @commands.command()
     async def skip(self, ctx):
-        skip_embed = discord.Embed(color=0x874efe)
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await self.play_next_song(ctx)
-            skip_embed.add_field(name="Skipped", value=f"", inline=False)
-            skip_embed.add_field(name="", value=f"Skip requested by {ctx.author.mention}")
+            skip_embed = build_embed(self.bot, title="Skipped", description=f"Skip requested by {ctx.author.mention}")
         else:
-            skip_embed.add_field(name="Error", value=f"I am not currently playing any music so I can't skip.", inline=False)
+            skip_embed = build_embed(self.bot, title="Error", description="I am not currently playing any music so I can't skip.", color=0xff0000)
         await ctx.send(embed=skip_embed)
 
     @commands.command()
     async def stop(self, ctx):
-        stop_embed = discord.Embed(color=0x874efe)
         if ctx.voice_client:
             self.queued_songs = [] # Emptying our queue for next instance
             await ctx.voice_client.disconnect()
-            stop_embed.add_field(name="Stopped", value= "Music has been stopped and the queue is now empty!")
+            stop_embed = build_embed(self.bot, title="Stopped", description="Music has been stopped and the queue has been emptied.")
         else: 
-            stop_embed.add_field(name="Error", value= "I am not in a voice channel right now.")
+            stop_embed = build_embed(self.bot, title="Error", description="I am not in a voice channel right now.", color=0xff0000)
         await ctx.send(embed=stop_embed)
 
 
     @commands.command()
     async def flush(self, ctx):
-        flush_embed = discord.Embed(color=0x874efe)
         songs_number = len(self.queued_songs)
-        self.queued_songs = []
-        flush_embed.add_field(name="Queue flushed", value=f"I have removed {songs_number} items from the queue.")
+        if songs_number > 0:
+            self.queued_songs = []
+            flush_embed = build_embed(self.bot, title="Queue flushed", description=f"I have removed {songs_number} items from the queue.")
+        else: 
+            flush_embed = build_embed(self.bot, title="Error", description=f"Queue is empty so I cannot remove anything from it.", color=0xff0000)
         await ctx.send(embed=flush_embed)
 
     @play.before_invoke
     async def ensure_voice(self, ctx):
-        connect_embed = discord.Embed(color=0xff0000)
         if ctx.voice_client is None:
             if ctx.author.voice:
                 await ctx.author.voice.channel.connect()
             else:
-                connect_embed.add_field(name="Error", value=f"You are not connected to a voice channel.", inline=False)
+                connect_embed=build_embed(self.bot, title="Error", description="You are not connected to a voice channel.", color=0xff0000)
                 await ctx.send(embed=connect_embed)
                 raise commands.CommandError("Author not connected to a voice channel.")  
 
