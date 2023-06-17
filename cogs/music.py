@@ -51,9 +51,37 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.queued_songs = []    
+    
+    def same_voice_channel():
+        async def predicate(ctx):
+            if not ctx.author.voice:
+                connect_embed=build_embed(ctx.cog.bot, title="Error", description="You are not connected to a voice channel.", color=0xff0000)
+                await ctx.send(embed=connect_embed)
+                return False
+            elif not ctx.voice_client:
+                connect_embed=build_embed(ctx.cog.bot, title="Error", description="I am not connected to a voice channel.", color=0xff0000)
+                await ctx.send(embed=connect_embed)
+                return False
+            elif ctx.author.voice.channel != ctx.voice_client.channel:
+                connect_embed=build_embed(ctx.cog.bot, title="Error", description="You are not in the same voice channel as me.", color=0xff0000)
+                await ctx.send(embed=connect_embed)
+                return False
+            else:
+                return True
+        return commands.check(predicate)
+    
+    async def ensure_voice(self, ctx):
+        if ctx.voice_client is None:
+            if ctx.author.voice:
+                await ctx.author.voice.channel.connect()
+            else:
+                connect_embed=build_embed(self.bot, title="Error", description="You are not connected to a voice channel.", color=0xff0000)
+                await ctx.send(embed=connect_embed)
+                raise commands.CommandError("Author not connected to a voice channel.")  
 
     @commands.command()
     @commands.guild_only()
+    @same_voice_channel()
     async def join(self, ctx, *, channel: discord.VoiceChannel):
         if ctx.voice_client is not None:
             return await ctx.voice_client.move_to(channel)
@@ -61,7 +89,13 @@ class Music(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @commands.before_invoke(ensure_voice)
     async def play(self, ctx, *, url):
+        # Hardcoded check again because decorators won't work well together 
+        if ctx.author.voice.channel != ctx.voice_client.channel:
+            connect_embed=build_embed(ctx.cog.bot, title="Error", description="You are not in the same voice channel as me.", color=0xff0000)
+            await ctx.send(embed=connect_embed)
+            return
         # We check if the task is already running to avoid starting it multiple times
         if not check_vc_members.is_running():
             check_vc_members.start(self, ctx.guild.id, ctx.author.voice.channel.id)
@@ -102,6 +136,7 @@ class Music(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @same_voice_channel()
     async def remove(self, ctx, *, number):
         remove_embed = discord.Embed(color=0x874efe)
         try:
@@ -119,6 +154,8 @@ class Music(commands.Cog):
                 await ctx.send(embed=remove_embed)
 
     @commands.command()
+    @commands.guild_only()
+    @same_voice_channel()
     async def pause(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
@@ -131,6 +168,7 @@ class Music(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @same_voice_channel()
     async def resume(self, ctx):
         if ctx.voice_client and  ctx.voice_client.is_paused():
             ctx.voice_client.resume()
@@ -143,6 +181,7 @@ class Music(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @same_voice_channel()
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
@@ -154,6 +193,7 @@ class Music(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @same_voice_channel()
     async def stop(self, ctx):
         if ctx.voice_client:
             self.queued_songs = [] # Emptying our queue for next instance
@@ -166,6 +206,7 @@ class Music(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @same_voice_channel()
     async def flush(self, ctx):
         songs_number = len(self.queued_songs)
         if songs_number > 0:
@@ -175,16 +216,6 @@ class Music(commands.Cog):
             flush_embed = build_embed(self.bot, title="Error", description=f"Queue is empty so I cannot remove anything from it.", color=0xff0000)
         await ctx.send(embed=flush_embed)
 
-    @play.before_invoke
-    async def ensure_voice(self, ctx):
-        if ctx.voice_client is None:
-            if ctx.author.voice:
-                await ctx.author.voice.channel.connect()
-            else:
-                connect_embed=build_embed(self.bot, title="Error", description="You are not connected to a voice channel.", color=0xff0000)
-                await ctx.send(embed=connect_embed)
-                raise commands.CommandError("Author not connected to a voice channel.")  
-
 @tasks.loop(minutes=5)
 async def check_vc_members(self, guild_id, voice_channel_id):
     guild = self.bot.get_guild(guild_id)  
@@ -192,8 +223,12 @@ async def check_vc_members(self, guild_id, voice_channel_id):
     if voice_channel:
         # Voice States returns a more reliable dictionary of connected members compared to Members cache.
         voice_members = list(voice_channel.voice_states.keys()) 
+        print(f"Task is running... Voice members list is {voice_members}")
         if voice_members  == [cfg.kaori_id]:  # We disconnect to save resources if the bot is the only connected user.
             for voice_client in self.bot.voice_clients:
+                self.queued_songs = [] # Emptying queue before disconnect in case we have some songs left
                 await voice_client.disconnect()
+                # inactivity_embed = build_embed(self.bot, title="Disconnected", description=f"Disconnected due to inactivity.")
+                # await ctx.send(embed=inactivity_embed)
     else:
         print("The voice channel is not found.") 
