@@ -53,12 +53,14 @@ class Music(commands.Cog):
         self.queued_songs = []    
 
     @commands.command()
+    @commands.guild_only()
     async def join(self, ctx, *, channel: discord.VoiceChannel):
         if ctx.voice_client is not None:
             return await ctx.voice_client.move_to(channel)
         await channel.connect()
 
     @commands.command()
+    @commands.guild_only()
     async def play(self, ctx, *, url):
         # We check if the task is already running to avoid starting it multiple times
         if not check_vc_members.is_running():
@@ -87,6 +89,7 @@ class Music(commands.Cog):
             await ctx.send(embed=embed)
 
     @commands.command()
+    @commands.guild_only()
     async def queue(self, ctx):
         embed_description = ""
         if len(self.queued_songs) == 0:
@@ -98,6 +101,7 @@ class Music(commands.Cog):
         await ctx.send(embed=queue_embed)
 
     @commands.command()
+    @commands.guild_only()
     async def remove(self, ctx, *, number):
         remove_embed = discord.Embed(color=0x874efe)
         try:
@@ -126,6 +130,7 @@ class Music(commands.Cog):
         await ctx.send(embed=pause_embed)
 
     @commands.command()
+    @commands.guild_only()
     async def resume(self, ctx):
         if ctx.voice_client and  ctx.voice_client.is_paused():
             ctx.voice_client.resume()
@@ -137,6 +142,7 @@ class Music(commands.Cog):
         await ctx.send(embed=resume_embed)
 
     @commands.command()
+    @commands.guild_only()
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
@@ -147,6 +153,7 @@ class Music(commands.Cog):
         await ctx.send(embed=skip_embed)
 
     @commands.command()
+    @commands.guild_only()
     async def stop(self, ctx):
         if ctx.voice_client:
             self.queued_songs = [] # Emptying our queue for next instance
@@ -158,6 +165,7 @@ class Music(commands.Cog):
 
 
     @commands.command()
+    @commands.guild_only()
     async def flush(self, ctx):
         songs_number = len(self.queued_songs)
         if songs_number > 0:
