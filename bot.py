@@ -26,6 +26,12 @@ async def on_ready():
     await bot.add_cog(Music(bot))
     await bot.add_cog(Misc(bot))
 
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return
+    raise error
+
 def main():
     bot.run(cfg.kaori_token, reconnect=True)
 
