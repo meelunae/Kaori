@@ -46,11 +46,11 @@ class YTDLSource(discord.PCMVolumeTransformer):
         
         filename = data['url'] if stream else ytdl.prepare_filename(data)
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
-
+    
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.queued_songs = []    
+        self.queues = {}
     
     def same_voice_channel():
         async def predicate(ctx):
@@ -81,30 +81,21 @@ class Music(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    @same_voice_channel()
-    async def join(self, ctx, *, channel: discord.VoiceChannel):
-        if ctx.voice_client is not None:
-            return await ctx.voice_client.move_to(channel)
-        await channel.connect()
-
-    @commands.command()
-    @commands.guild_only()
     @commands.before_invoke(ensure_voice)
     async def play(self, ctx, *, url):
-        # Hardcoded check again because decorators won't work well together 
+        # Hardcoded check because decorators won't work well together 
         if ctx.author.voice.channel != ctx.voice_client.channel:
             connect_embed=build_embed(ctx.cog.bot, title="Error", description="You are not in the same voice channel as me.", color=0xff0000)
             await ctx.send(embed=connect_embed)
             return
-        # We check if the task is already running to avoid starting it multiple times
-        if not check_vc_members.is_running():
-            check_vc_members.start(self, ctx.guild.id, ctx.author.voice.channel.id)
-        
+        # We initalize the queue for current guild if it is not initialized yet
+        if ctx.guild.id not in self.queues:
+            self.queues[ctx.guild.id] = []
         player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
         if ctx.voice_client.is_playing():
-            self.queued_songs.append({'title': player.title, 'url': url})
+            self.queues[ctx.guild.id].append({'title': player.title, 'url': url})
             play_embed = build_embed(self.bot, title="Added to Queue", description=f"\n{player.title}")
-            play_embed.add_field(name=f"", value=f"In position #{len(self.queued_songs)}", inline=True)
+            play_embed.add_field(name=f"", value=f"In position #{len(self.queues[ctx.guild.id])}", inline=True)
         else:
             play_embed = build_embed(self.bot, title="Now Playing", description=f"\n{player.title}")
             play_embed.add_field(name="Length", value=f"\n{player.duration}", inline=False)
@@ -113,8 +104,8 @@ class Music(commands.Cog):
         await ctx.send(embed=play_embed)
 
     async def play_next_song(self, ctx):
-        if len(self.queued_songs) > 0:
-            song = self.queued_songs.pop(0)
+        if len(self.queues[ctx.guild.id]) > 0:
+            song = self.queues[ctx.guild.id].pop(0)
             player = await YTDLSource.from_url(song['url'], loop=self.bot.loop, stream=True)
             embed = build_embed(self.bot, title="Now Playing", description=f"\n{player.title}")
             embed.add_field(name="Length", value=f"\n{player.duration}", inline=False)
@@ -126,10 +117,10 @@ class Music(commands.Cog):
     @commands.guild_only()
     async def queue(self, ctx):
         embed_description = ""
-        if len(self.queued_songs) == 0:
+        if len(self.queues[ctx.guild.id]) == 0:
             embed_description = "The queue is currently empty."
         else:
-            for i, song in enumerate(self.queued_songs, start=1):
+            for i, song in enumerate(self.queues[ctx.guild.id], start=1):
                 embed_description += f'{i}. {song["title"]}\n'
         queue_embed = build_embed(self.bot, title="Queue", description=embed_description)
         await ctx.send(embed=queue_embed)
@@ -141,10 +132,10 @@ class Music(commands.Cog):
         remove_embed = discord.Embed(color=0x874efe)
         try:
             idx = int(number)
-            if len(self.queued_songs) < idx or idx < 1:
+            if len(self.queues[ctx.guild.id]) < idx or idx < 1:
                 remove_embed = build_embed(self.bot, title="Error", description="There is no queue element for the selected index.", color=0xff0000)
             else:
-                song = self.queued_songs.pop(idx-1)
+                song = self.queues[ctx.guild.id].pop(idx-1)
                 remove_embed = build_embed(self.bot, title="Removed from Queue", description=f"{song['title']} was removed from the queue.")
         
         except ValueError:
@@ -196,7 +187,7 @@ class Music(commands.Cog):
     @same_voice_channel()
     async def stop(self, ctx):
         if ctx.voice_client:
-            self.queued_songs = [] # Emptying our queue for next instance
+            self.queues[ctx.guild.id] = [] # Emptying our queue for next instance
             await ctx.voice_client.disconnect()
             stop_embed = build_embed(self.bot, title="Stopped", description="Music has been stopped and the queue has been emptied.")
         else: 
@@ -208,27 +199,30 @@ class Music(commands.Cog):
     @commands.guild_only()
     @same_voice_channel()
     async def flush(self, ctx):
-        songs_number = len(self.queued_songs)
+        songs_number = len(self.queues[ctx.guild.id])
         if songs_number > 0:
-            self.queued_songs = []
+            self.queues[ctx.guild.id] = []
             flush_embed = build_embed(self.bot, title="Queue flushed", description=f"I have removed {songs_number} items from the queue.")
         else: 
             flush_embed = build_embed(self.bot, title="Error", description=f"Queue is empty so I cannot remove anything from it.", color=0xff0000)
         await ctx.send(embed=flush_embed)
+    
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        # We ignore voice state changes that do not originate from the bot
+        if not member.id == self.bot.user.id:
+            return
+        # We ignore voice state changes generated by disconnect() events too
+        elif before.channel is not None:
+            return
+        # Check if music is playing every 3 minutes with an asyncio loop
+        else:
+            voice = after.channel.guild.voice_client
+            while True:
+                await asyncio.sleep(180)
+                # If not playing, disconnect
+                if voice.is_playing() == False:
+                    print ("The bot isn't playing, disconnecting.")
+                    await voice.disconnect()
+                    break
 
-@tasks.loop(minutes=5)
-async def check_vc_members(self, guild_id, voice_channel_id):
-    guild = self.bot.get_guild(guild_id)  
-    voice_channel = guild.get_channel(voice_channel_id)
-    if voice_channel:
-        # Voice States returns a more reliable dictionary of connected members compared to Members cache.
-        voice_members = list(voice_channel.voice_states.keys()) 
-        print(f"Task is running... Voice members list is {voice_members}")
-        if voice_members  == [cfg.kaori_id]:  # We disconnect to save resources if the bot is the only connected user.
-            for voice_client in self.bot.voice_clients:
-                self.queued_songs = [] # Emptying queue before disconnect in case we have some songs left
-                await voice_client.disconnect()
-                # inactivity_embed = build_embed(self.bot, title="Disconnected", description=f"Disconnected due to inactivity.")
-                # await ctx.send(embed=inactivity_embed)
-    else:
-        print("The voice channel is not found.") 

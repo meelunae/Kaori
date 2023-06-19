@@ -6,7 +6,7 @@ import sys
 def build_embed(bot, **kwargs) -> discord.Embed:  
 
   # TODO: add support for embed fields straight from kwargs. Rough way of how to do it is commented below, but I want something different. 
-  title = kwargs.pop('title', 'Title')
+  title = kwargs.pop('title', '')
   description = kwargs.pop('description', 'Description')
   color = kwargs.pop('color', 0x874efe)  # To be changed to configurable for funsies!
   img = kwargs.pop('img', None)
